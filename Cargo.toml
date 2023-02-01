@@ -1,0 +1,14 @@
+[package]
+name = "lavirint"
+version = "0.1.0"
+edition = "2021"
+authors = [
+    "Filip Parag <filip@parag.rs>",
+    "Vladimir Jovin <vladimirjovin8@gmail.com>",
+]
+rust-version = "1.67"
+
+[dependencies]
+
+[profile.release]
+strip = true
