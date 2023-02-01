@@ -84,7 +84,98 @@ fn read_file(path: &str) -> Result<Labyrinth, Box<dyn Error>> {
     }
     Ok(Labyrinth(labyrinth))
 }
+
+fn display_labyrinth(lab: &Labyrinth) {
+    let fields = &lab.0;
+    #[allow(clippy::needless_range_loop)]
+    for row in 0..fields.len() {
+        for line in 1..=4 {
+            for col in 0..COLUMN_SIZE {
+                if (!fields[row][col].paths.north)
+                    && !fields[row][col].paths.south
+                    && !fields[row][col].paths.east
+                    && !fields[row][col].paths.west
+                    && !fields[row][col].doors.north
+                    && !fields[row][col].doors.south
+                    && !fields[row][col].doors.east
+                    && !fields[row][col].doors.west
+                {
+                    print!("      ");
+                    continue;
+                }
+                match line {
+                    1 => print!(
+                        "┏━{}━┓",
+                        if fields[row][col].doors.north {
+                            "╩╩"
+                        } else if fields[row][col].paths.north {
+                            "┛┗"
+                        } else {
+                            "━━"
+                        }
+                    ),
+                    2 => print!(
+                        "{} {} {}",
+                        if fields[row][col].doors.west {
+                            "╣"
+                        } else if fields[row][col].paths.west {
+                            "┛"
+                        } else {
+                            "┃"
+                        },
+                        if fields[row][col].is_end {
+                            "🚩"
+                        } else if fields[row][col].contains_key {
+                            "🗝️ "
+                        } else {
+                            "  "
+                        },
+                        if fields[row][col].doors.east {
+                            "╠"
+                        } else if fields[row][col].paths.east {
+                            "┗"
+                        } else {
+                            "┃"
+                        },
+                    ),
+                    3 => print!(
+                        "{} {:2} {}",
+                        if fields[row][col].doors.west {
+                            "╣"
+                        } else if fields[row][col].paths.west {
+                            "┓"
+                        } else {
+                            "┃"
+                        },
+                        row * COLUMN_SIZE + col,
+                        if fields[row][col].doors.east {
+                            "╠"
+                        } else if fields[row][col].paths.east {
+                            "┏"
+                        } else {
+                            "┃"
+                        },
+                    ),
+                    4 => print!(
+                        "┗━{}━┛",
+                        if fields[row][col].doors.south {
+                            "╦╦"
+                        } else if fields[row][col].paths.south {
+                            "┓┏"
+                        } else {
+                            "━━"
+                        }
+                    ),
+                    _ => {}
+                }
+            }
+            println!()
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let l = read_file("./labyrinth.txt")?;
+    display_labyrinth(&l);
     Ok(())
 }
