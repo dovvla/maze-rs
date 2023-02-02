@@ -1,5 +1,8 @@
 use std::{error::Error, str::FromStr};
 const COLUMN_SIZE: usize = 9;
+
+mod pathfinder;
+
 struct Labyrinth(Vec<Vec<Field>>);
 
 #[derive(Debug, Default, Clone, Copy)]
