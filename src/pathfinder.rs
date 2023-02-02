@@ -18,6 +18,24 @@ fn traverse_path(came_from: &[Option<usize>], end: usize) -> Vec<usize> {
     total_path
 }
 
+fn count_doors(graph: &[Vec<u8>], came_from: &[Option<usize>], end: usize) -> usize {
+    let mut current = end;
+    let mut door_count = 0usize;
+    while let Some(previous) = came_from[current] {
+        if graph[previous][current] == 255 {
+            door_count += 1;
+        }
+        current = previous;
+    }
+    door_count
+}
+
+#[allow(unused)]
+pub fn deduplicate_path(path: &[usize]) -> Vec<usize> {
+    let mut path = path.to_owned();
+    path.dedup();
+    path
+}
 
 #[allow(unused)]
 pub fn a_star(start: usize, end: usize, graph: &[Vec<u8>]) -> Option<(Vec<usize>, Vec<bool>)> {
@@ -68,6 +86,80 @@ pub fn a_star(start: usize, end: usize, graph: &[Vec<u8>]) -> Option<(Vec<usize>
     None
 }
 
+#[allow(unused)]
+pub fn key_cumsum(path: &[usize], consumed_key: &[bool], keys: &[bool]) -> Vec<isize> {
+    let mut required_keys = vec![0isize; path.len()];
+    for f in 0..path.len() - 1 {
+        if consumed_key[path[f + 1]] {
+            required_keys[f] += 1;
+        }
+        if keys[path[f]] {
+            required_keys[f] -= 1;
+        }
+    }
+
+    // println!("csmd {:2?}", &required_keys);
+
+    let mut required_keys_cumsum = vec![0; required_keys.len()];
+    required_keys_cumsum[required_keys.len() - 1] = required_keys[required_keys.len() - 1];
+
+    for k in (0..required_keys.len() - 1).rev() {
+        required_keys_cumsum[k] = required_keys_cumsum[k + 1] + required_keys[k];
+        if required_keys_cumsum[k] < 0 {
+            required_keys_cumsum[k] = 0;
+        }
+    }
+
+    required_keys_cumsum
+}
+
+#[allow(unused)]
+pub fn key_pickup(
+    path: &[usize],
+    cumsum: &[isize],
+    graph: &mut [Vec<u8>],
+    keys: &mut [bool],
+    inventory: isize,
+) -> Option<(Vec<usize>, isize)> {
+    let mut pikcup_path = vec![];
+    let mut key_inventory = inventory;
+
+    for f in 0..path.len() {
+        if keys[path[f]] {
+            key_inventory += 1;
+            keys[path[f]] = false;
+        }
+        if key_inventory >= cumsum[f] {
+            break;
+        }
+        let mut current = path[f];
+        'inner: for (key, _, doors) in bfs_closest_keys(current, graph, keys, true) {
+            if doors > key_inventory as usize {
+                continue 'inner;
+            }
+            if let Some(key_path) = bfs_shortest_path(current, key, graph, &[], true) {
+                pikcup_path.extend_from_slice(&key_path);
+                // println!("kp{:?}", &key_path);
+                // println!("doors {:?}", &doors);
+            } else {
+                return None;
+            }
+            key_inventory += 1;
+            keys[key] = false;
+            current = key;
+            if key_inventory >= cumsum[f] {
+                break 'inner;
+            }
+        }
+        if key_inventory < cumsum[f] && graph[path[f]][path[f + 1]] == 255 {
+            return None;
+        }
+    }
+    // println!("pkup {:2?}", &pikcup_path);
+    // println!("invt {:?}", &key_inventory);
+
+    Some((pikcup_path, key_inventory))
+}
 
 enum BfsActionResult<T> {
     Accumulate(T),
