@@ -1,4 +1,6 @@
 use std::{error::Error, str::FromStr};
+
+use pathfinder::parallel_backtrack;
 const COLUMN_SIZE: usize = 9;
 
 mod pathfinder;
@@ -270,25 +272,18 @@ impl Labyrinth {
         (path_matrix, key_vector, end_vector)
     }
 
-    #[allow(unused)]
     fn pathfind(&self, start: usize, end: usize) -> Option<Vec<usize>> {
-        let (mut maze, mut keys, all_ends) = self.pathfind_matrix();
-        let mut carrying_key_count = 0usize;
+        let (mut maze, mut keys, _) = self.pathfind_matrix();
         let mut whole_path: Vec<usize> = vec![];
-        let mut visited = vec![false; maze.len()];
         let mut key_inventory = 0isize;
 
         let mut start = start;
         loop {
             let (ideal_path, consumed) = pathfinder::a_star(start, end, &maze)?;
-            // println!("path {:2?}", &ideal_path);
             let cumsum = pathfinder::key_cumsum(&ideal_path, &consumed, &keys);
-            // println!("csmd {:2?}", &consumed);
-            // println!("csum {:2?}", &cumsum);
             let (pickup_path, kinv) =
                 pathfinder::key_pickup(&ideal_path, &cumsum, &mut maze, &mut keys, key_inventory)?;
             key_inventory = kinv;
-            // println!("kinv {:2?}", key_inventory);
             if pickup_path.is_empty() {
                 whole_path.extend(ideal_path);
                 break;
@@ -297,27 +292,37 @@ impl Labyrinth {
                 whole_path.extend(pickup_path);
             }
         }
-
-        // let (ideal_path, consumed) = pathfinder::a_star(start, end, &maze).expect("Path not found");
-        // println!("path {:2?}", &ideal_path);
-        // let cumsum = pathfinder::key_cumsum(&ideal_path, &consumed, &keys);
-        // let (pickup_path, kinv) =
-        //     pathfinder::key_pickup(&ideal_path, &cumsum, &mut maze, &mut keys, -1)
-        //         .expect("Path not found");
-
-        // println!(
-        //     "door count {:?}",
-        //     pathfinder::bfs_closest_keys(5, &maze, &keys, true)
-        // );
-
         Some(pathfinder::deduplicate_path(&whole_path))
+    }
+
+    #[allow(unused)]
+    fn pathfind_parallel(&self, start: usize, end: usize) -> Option<Vec<usize>> {
+        let (mut maze, mut keys, _) = self.pathfind_matrix();
+        let mut start = start;
+        pathfinder::parallel_backtrack(start, end, &maze, &keys);
+        None
     }
 }
 
+use std::time::Instant;
 fn main() -> Result<(), Box<dyn Error>> {
     let l = read_file("./labyrinth.txt")?;
     display_labyrinth(&l);
+    let now = Instant::now();
+
+    let pp = l.pathfind_parallel(0, 47);
+
+    let elapsed = now.elapsed();
+    println!("Time for parallel exec {:?}", elapsed);
+    let now = Instant::now();
+
     let p = l.pathfind(0, 47);
-    println!["{p:?}"];
+    let elapsed = now.elapsed();
+
+    println!("Time for normal exec {:?}", elapsed);
+
+    println!["{:?}", p.unwrap()];
+    println!["{pp:?}"];
+
     Ok(())
 }

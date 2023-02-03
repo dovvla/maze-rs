@@ -1,5 +1,10 @@
 use super::COLUMN_SIZE;
-use std::collections::{BinaryHeap, VecDeque};
+use std::{
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+    sync::{Arc, Mutex, RwLock},
+    thread, vec,
+};
 
 fn heuristic(from: usize, to: usize) -> usize {
     let dist = from.abs_diff(to);
@@ -84,6 +89,194 @@ pub fn a_star(start: usize, end: usize, graph: &[Vec<u8>]) -> Option<(Vec<usize>
         }
     }
     None
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct State {
+    walk: Vec<usize>, // walk[-1] -> last visited
+    doors_opened: HashSet<(usize, usize)>,
+    keys_pickedup: Vec<bool>,
+    graph: Arc<Vec<Vec<u8>>>,
+    keys: Arc<Vec<bool>>,
+}
+
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.walk.len().cmp(&other.walk.len()))
+    }
+}
+
+impl PartialEq for State {
+    fn eq(&self, other: &Self) -> bool {
+        self.walk.len() == other.walk.len()
+    }
+}
+
+impl State {
+    fn key_count(&self) -> usize {
+        self.keys_pickedup.iter().filter(|e| **e).count() - self.doors_opened.len()
+    }
+    fn node_pair(&self, to: usize) -> (usize, usize) {
+        let from = self.walk[self.walk.len() - 1];
+        if from > to {
+            (to, from)
+        } else {
+            (from, to)
+        }
+    }
+    fn door_opened(&self, to: usize) -> bool {
+        self.doors_opened.contains(&self.node_pair(to))
+    }
+    fn open_door(mut self, to: usize) -> Option<Self> {
+        match self.key_count() > 0 {
+            true => {
+                self.doors_opened.insert(self.node_pair(to));
+                self.walk.push(to);
+                if self.keys[to] && !self.keys_pickedup[to] {
+                    self.keys_pickedup[to] = true
+                }
+                Some(self)
+            }
+            false => None,
+        }
+    }
+    fn walk(mut self, to: usize) -> Option<Self> {
+        let from = self.walk[self.walk.len() - 1];
+        match self.graph[from][to] {
+            1 => {
+                self.walk.push(to);
+                if self.keys[to] && !self.keys_pickedup[to] {
+                    self.keys_pickedup[to] = true
+                }
+                return Some(self);
+            }
+            255 => self.open_door(to),
+            _ => None,
+        }
+    }
+    fn next_states(&self) -> Vec<Self> {
+        let from = self.walk[self.walk.len() - 1];
+        let mut v = Vec::with_capacity(4);
+        for next_field in 0..self.graph[from].len() {
+            if self.graph[from][next_field] != 0 {
+                if let Some(n) = self.clone().walk(next_field) {
+                    if n.walk.len() >= 3 {
+                        let l = n.walk.len();
+                        if n.walk[l - 1] == n.walk[l - 3] && !self.keys[n.walk[l - 2]] {
+                            continue;
+                        }
+                    }
+                    v.push(n)
+                }
+            }
+        }
+        v
+    }
+    fn at_end(&self, end: usize) -> bool {
+        self.walk[self.walk.len() - 1] == end
+    }
+}
+
+pub fn worker(
+    end: usize,
+    queue: Arc<RwLock<VecDeque<State>>>,
+    min_walk: Arc<Mutex<Option<Vec<usize>>>>,
+    sync_flex: Arc<Mutex<isize>>,
+) {
+    loop {
+        let state = match queue.write() {
+            Ok(mut rw) => match rw.pop_front() {
+                Some(state) => {
+                    *sync_flex.lock().unwrap() = 0;
+
+                    state
+                }
+                None => {
+                    *sync_flex.lock().unwrap() += 1;
+                    let a = *sync_flex.lock().unwrap();
+                    if a >= 15 {
+                        return;
+                    }
+                    continue;
+                }
+            },
+            Err(_) => continue,
+        };
+        let next_states = state.next_states();
+
+        let min_state = next_states
+            .clone()
+            .into_iter()
+            .filter(|s| s.at_end(end))
+            .reduce(|min, c| if c < min { c } else { min });
+        let mut states_to_push: VecDeque<State> = next_states
+            .into_iter()
+            .filter(|state| !state.at_end(end))
+            .collect();
+        match min_state {
+            Some(s) => match min_walk.lock() {
+                Ok(mut min_s) => {
+                    let len = match &(*min_s) {
+                        Some(ms) => ms.len(),
+                        None => usize::MAX,
+                    };
+                    if len > s.walk.len() {
+                        std::mem::replace::<Option<Vec<usize>>>(&mut *min_s, Some(s.walk));
+                        println!("{:?}", min_s.clone().unwrap());
+                    }
+                }
+                Err(_) => unreachable!(),
+            },
+            None => {}
+        }
+        let len;
+        match min_walk.lock() {
+            Ok(min_s) => {
+                len = match &(*min_s) {
+                    Some(ms) => ms.len(),
+                    None => usize::MAX,
+                };
+            }
+            Err(_) => unreachable!(),
+        }
+        states_to_push = states_to_push
+            .into_iter()
+            .filter(|st| st.walk.len() < len)
+            .collect();
+
+        match queue.write() {
+            Ok(mut queue) => queue.append(&mut states_to_push),
+            Err(_) => {}
+        }
+    }
+}
+
+const NUM_THREADS: isize = 16;
+#[allow(unused)]
+pub fn parallel_backtrack(start: usize, end: usize, graph: &[Vec<u8>], keys: &[bool]) {
+    let inital_state = State {
+        walk: vec![start],
+        doors_opened: HashSet::new(),
+        keys_pickedup: vec![false; graph.len()],
+        graph: Arc::new(graph.to_owned()),
+        keys: Arc::new(keys.to_owned()),
+    };
+    let queue = Arc::new(RwLock::new(VecDeque::<State>::new()));
+    let min_walk: Arc<Mutex<Option<Vec<usize>>>> = Arc::new(Mutex::new(None));
+    let sync_flex: Arc<Mutex<isize>> = Arc::new(Mutex::new(0));
+    queue.write().unwrap().push_front(inital_state);
+    let mut handles = vec![];
+    for i in 0..NUM_THREADS {
+        let queue = queue.clone();
+        let min_walk = min_walk.clone();
+        let sync_flex = sync_flex.clone();
+        handles.push(thread::spawn(move || {
+            worker(end, queue, min_walk, sync_flex)
+        }));
+    }
+    for thread in handles.into_iter() {
+        thread.join().unwrap();
+    }
 }
 
 #[allow(unused)]
