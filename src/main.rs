@@ -177,6 +177,101 @@ fn display_labyrinth(lab: &Labyrinth) {
     }
 }
 
+impl Labyrinth {
+    fn pathfind_matrix(&self) -> (Vec<Vec<u8>>, Vec<bool>, Vec<bool>) {
+        macro_rules! dim {
+            ($row:expr, $col:expr) => {
+                $row * COLUMN_SIZE + $col
+            };
+            (len) => {
+                self.0.len() * COLUMN_SIZE
+            };
+        }
+        let mut path_matrix = vec![vec![0u8; dim![len]]; dim![len]];
+        let mut key_vector = vec![false; dim![len]];
+        let mut end_vector = vec![false; dim![len]];
+        for r in 0..self.0.len() {
+            for c in 0..COLUMN_SIZE {
+                if self.0[r][c].paths.north && r > 0 {
+                    path_matrix[dim![r, c]][dim![r - 1, c]] += 2;
+                    path_matrix[dim![r - 1, c]][dim![r, c]] += 2;
+                }
+                if self.0[r][c].paths.south && r < self.0.len() - 1 {
+                    path_matrix[dim![r, c]][dim![r + 1, c]] += 2;
+                    path_matrix[dim![r + 1, c]][dim![r, c]] += 2;
+                }
+                if self.0[r][c].paths.west && c > 0 {
+                    path_matrix[dim![r, c]][dim![r, c - 1]] += 2;
+                    path_matrix[dim![r, c - 1]][dim![r, c]] += 2;
+                }
+                if self.0[r][c].paths.east && c < COLUMN_SIZE - 1 {
+                    path_matrix[dim![r, c]][dim![r, c + 1]] += 2;
+                    path_matrix[dim![r, c + 1]][dim![r, c]] += 2;
+                }
+                /* */
+                if self.0[r][c].doors.north && r > 0 {
+                    path_matrix[dim![r, c]][dim![r - 1, c]] += 3;
+                    path_matrix[dim![r - 1, c]][dim![r, c]] += 3;
+                }
+                if self.0[r][c].doors.south && r < self.0.len() - 1 {
+                    path_matrix[dim![r, c]][dim![r + 1, c]] += 3;
+                    path_matrix[dim![r + 1, c]][dim![r, c]] += 3;
+                }
+                if self.0[r][c].doors.west && c > 0 {
+                    path_matrix[dim![r, c]][dim![r, c - 1]] += 3;
+                    path_matrix[dim![r, c - 1]][dim![r, c]] += 3;
+                }
+                if self.0[r][c].doors.east && c < COLUMN_SIZE - 1 {
+                    path_matrix[dim![r, c]][dim![r, c + 1]] += 3;
+                    path_matrix[dim![r, c + 1]][dim![r, c]] += 3;
+                }
+                /* */
+                if self.0[r][c].contains_key {
+                    key_vector[dim![r, c]] = true;
+                }
+                if self.0[r][c].is_end {
+                    end_vector[dim![r, c]] = true;
+                }
+            }
+        }
+
+        // print!["   "];
+        // for i in 0..dim![len] {
+        //     print!["{:2} ", i + 1];
+        // }
+        // println![];
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..dim![len] {
+            // print!["{:2} ", i + 1];
+            for j in 0..dim![len] {
+                path_matrix[i][j] = match path_matrix[i][j] {
+                    4 => 1,   // path
+                    7 => 255, // door
+                    _ => 0,   // wall
+                };
+                // print![
+                //     " {} ",
+                //     match path_matrix[i][j] {
+                //         1 => {
+                //             "#"
+                //         }
+                //         255 => {
+                //             "D"
+                //         }
+                //         _ => {
+                //             "·"
+                //         }
+                //     }
+                // ];
+            }
+            // println![];
+        }
+
+        (path_matrix, key_vector, end_vector)
+    }
+
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let l = read_file("./labyrinth.txt")?;
     display_labyrinth(&l);
